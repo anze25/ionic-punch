@@ -71,6 +71,7 @@
                 interface="popover"
               >
                 <ion-select-option value="new">Dodaj novo...</ion-select-option>
+                <ion-select-option value="deleteAll">Izbriši vse...</ion-select-option>
                 <ion-select-option
                   v-for="desc in allDescriptions"
                   :key="desc"
@@ -87,6 +88,21 @@
         </ion-grid>
 
       </div>
+      <!-- Loading Spinner -->
+      <ion-loading
+        :is-open="isLoading"
+        :message="loadingMessage"
+        spinner="circles"
+      ></ion-loading>
+
+      <!-- Progress Bar -->
+      <ion-progress-bar
+        v-if="isLoading"
+        :value="progress"
+        color="danger"
+        type="determinate"
+        style="margin-top: 20px;"
+      ></ion-progress-bar>
     </ion-content>
   </ion-page>
 
@@ -94,12 +110,18 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { IonButtons, IonContent, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonBadge, IonGrid, IonSelect, IonSelectOption } from '@ionic/vue';
+import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonBadge, IonGrid, IonSelect, IonSelectOption, } from '@ionic/vue';
 import PunchInModal from '../components/PunchInModal.vue';
 import PunchOutModal from '../components/PunchOutModal.vue';
 import { modalController } from '@ionic/vue';
+import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
 
 const items = ref([]);
+
+const isLoading = ref(false);
+const progress = ref(0);
+const loadingMessage = ref('Deleting data...');
 
 const isPunchinDisabled = ref(false);
 const isPunchoutDisabled = ref(true);
@@ -131,15 +153,6 @@ const timeElapsed = computed(() => {
   return `${hours}h ${minutes}m`;
 });
 
-const saveItemsToLocalStorage = (newItems) => {
-  localStorage.setItem('items', JSON.stringify(newItems));
-};
-const loadItemsFromLocalStorage = () => {
-  const storedItems = localStorage.getItem('items');
-  if (storedItems) {
-    items.value = JSON.parse(storedItems);
-  }
-};
 
 const openPunchInModal = async () => {
   const modal = await modalController.create({
@@ -163,20 +176,30 @@ const openPunchOutModal = async () => {
     component: PunchOutModal,
   });
 
-  modal.onDidDismiss().then((data) => {
+  modal.onDidDismiss().then(async (data) => {
     if (data.data) {
       items.value.push(data.data);
       console.log('Punchout Data:', data.data);
-      saveItemsToLocalStorage(items.value);
-      localStorage.removeItem('punchinData');
-      isPunchoutDisabled.value = true;
-      isPunchinDisabled.value = false;
+
+      // Save the data to Firebase
+      try {
+        await addDoc(collection(db, 'punches'), data.data);
+        console.log('Data saved to Firebase:', data.data);
+
+        // Remove punchinData from local storage
+        localStorage.removeItem('punchinData');
+        isPunchoutDisabled.value = true;
+        isPunchinDisabled.value = false;
+      } catch (error) {
+        console.error('Error saving data to Firebase:', error);
+      }
     }
     checkPunchinData();
   });
 
   return await modal.present();
 };
+
 
 const punchIn = () => {
   const now = new Date();
@@ -198,7 +221,7 @@ const punchIn = () => {
   checkPunchinData();
 };
 
-const punchOut = () => {
+const punchOut = async () => {
   const now = new Date();
   const endDate = now.toISOString().slice(0, 10);
   const endTime = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }); // Format as HH:mm
@@ -215,8 +238,14 @@ const punchOut = () => {
     startTime: new Date(`${punchinData.startDate}T${punchinData.startTime}`).toISOString(),
   };
 
+  try {
+    // Save the new item to Firebase 
+    await addDoc(collection(db, 'punches'), newItem);
+    console.log('Punchout Data saved to Firebase:', newItem);
+  }
+  catch (error) { console.error('Error saving punchout data to Firebase:', error); }
+
   items.value.push(newItem);
-  saveItemsToLocalStorage(items.value);
   localStorage.removeItem('punchinData');
   isPunchinDisabled.value = false;
   console.log('Punchout Data:', newItem);
@@ -224,39 +253,75 @@ const punchOut = () => {
 
 };
 
-const loadDescriptions = () => {
-  const storedDescriptions = localStorage.getItem('allDescriptions');
-  if (storedDescriptions) {
-    try {
-      const parsedDescriptions = JSON.parse(storedDescriptions);
-      console.log('Parsed Descriptions:', parsedDescriptions);
-      const filteredDescriptions = parsedDescriptions.filter(desc => desc !== null && desc !== undefined);
-      allDescriptions.value = filteredDescriptions.sort((a, b) => a.localeCompare(b));
-      console.log('All Descriptions:', allDescriptions.value);
-    } catch (error) {
-      console.error('Error parsing descriptions:', error);
-    }
-  } else {
-    console.log('No descriptions found in local storage.');
+const loadDescriptions = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'descriptions'));
+    const descriptions = [];
+    querySnapshot.forEach((doc) => {
+      descriptions.push(doc.data().description);
+    });
+
+    const filteredDescriptions = descriptions.filter(desc => desc !== null && desc !== undefined);
+    allDescriptions.value = filteredDescriptions.sort((a, b) => a.localeCompare(b));
+  } catch (error) {
+    console.error('Error loading descriptions from Firebase:', error);
     allDescriptions.value = [];
   }
 };
 
+const deleteAllDescriptions = async () => {
+  isLoading.value = true; // Show the loading spinner
+  progress.value = 0; // Reset progress
+  loadingMessage.value = 'Brisanje vnosov...';
 
-const saveDescription = (newDescription) => {
-  allDescriptions.value.push(newDescription);
-  localStorage.setItem('allDescriptions', JSON.stringify(allDescriptions.value));
-  loadDescriptions();
-};
-const handleDescriptionChange = (e) => {
-  const selectedValue = e.detail.value; if (selectedValue === 'new') {
-    const newDescription = prompt('Enter new description:');
-    if (newDescription) { saveDescription(newDescription); description.value = newDescription; }
-  } else { description.value = selectedValue; }
+  try {
+    const querySnapshot = await getDocs(collection(db, 'descriptions'));
+    const totalDocs = querySnapshot.size;
+    let deletedCount = 0;
+
+    for (const docSnapshot of querySnapshot.docs) {
+      await deleteDoc(doc(db, 'descriptions', docSnapshot.id));
+      deletedCount++;
+      progress.value = deletedCount / totalDocs; // Update progress
+    }
+
+    console.log('All descriptions deleted from Firebase');
+    allDescriptions.value = [];
+  } catch (error) {
+    console.error('Error deleting all descriptions from Firebase:', error);
+  }
+
+  isLoading.value = false; // Hide the loading spinner
 };
 
+const saveDescription = async (newDescription) => {
+  try {
+    await addDoc(collection(db, 'descriptions'), { description: newDescription });
+    loadDescriptions();
+  } catch (error) {
+    console.error('Error saving description to Firebase:', error);
+  }
+};
+
+const handleDescriptionChange = async (e) => {
+  const selectedValue = e.detail.value;
+  if (selectedValue === 'new') {
+    const newDescription = prompt('Vnesi nov vpis:');
+    if (newDescription) {
+      await saveDescription(newDescription);
+      description.value = newDescription;
+    }
+  } else if (selectedValue === 'deleteAll') {
+    const confirmDelete = confirm('Ali ste prepričani, da želite izbrisati vse opise? Tega dejanja ni mogoče razveljaviti.');
+    if (confirmDelete) {
+      await deleteAllDescriptions();
+    }
+  } else {
+    description.value = selectedValue;
+  }
+};
 onMounted(() => {
-  loadItemsFromLocalStorage();
+
   checkPunchinData();
   loadDescriptions();
 });

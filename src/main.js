@@ -5,12 +5,15 @@ import router from './router';
 import print from 'vue3-print-nb';
 import {
   IonicVue,
+  IonContent,
   IonItem,
   IonLabel,
   IonButton,
   IonRow,
   IonCol,
   IonGrid,
+  IonLoading,
+  IonProgressBar,
 } from '@ionic/vue';
 
 /* Core CSS required for Ionic components to work properly */
@@ -46,12 +49,15 @@ const app = createApp(App);
 const pinia = createPinia();
 
 // Register multiple components globally
+app.component('IonContent', IonContent);
 app.component('IonItem', IonItem);
 app.component('IonLabel', IonLabel);
 app.component('IonButton', IonButton);
 app.component('IonRow', IonRow);
 app.component('IonCol', IonCol);
 app.component('IonGrid', IonGrid);
+app.component('IonLoading', IonLoading);
+app.component('IonProgressBar', IonProgressBar);
 
 app.use(IonicVue).use(pinia).use(router).use(print);
 

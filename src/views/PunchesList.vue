@@ -15,9 +15,17 @@
         horizontal="center"
         slot="fixed"
       >
-        <ion-fab-button @click="openNewModal">
-          <ion-icon :icon="add"></ion-icon>
-        </ion-fab-button>
+        <div style="display: flex; justify-content: center; gap: 20px;">
+          <ion-fab-button @click="openNewModal">
+            <ion-icon :icon="add"></ion-icon>
+          </ion-fab-button>
+          <ion-fab-button
+            color="danger"
+            @click="confirmDeleteAll"
+          >
+            <ion-icon :icon="trash"></ion-icon>
+          </ion-fab-button>
+        </div>
       </ion-fab>
 
       <div>
@@ -41,7 +49,7 @@
                     <ion-button @click="openNewModal(item, true)">Edit</ion-button>
                     <ion-button
                       color="danger"
-                      @click="deleteItem(index)"
+                      @click="handleDelete(index)"
                     >Delete</ion-button>
                   </div>
                 </div>
@@ -49,58 +57,13 @@
             </ion-card>
           </ion-item>
         </ion-list>
-        <ion-modal ref="modal">
-          <ion-header>
-            <ion-toolbar>
-              <ion-buttons slot="start">
-                <ion-button @click="cancel()">Cancel</ion-button>
-              </ion-buttons>
-              <ion-title>Uredi vnos</ion-title>
-              <ion-buttons slot="end">
-                <ion-button
-                  :strong="true"
-                  @click="confirm()"
-                >Potrdi</ion-button>
-              </ion-buttons>
-            </ion-toolbar>
-          </ion-header>
-          <ion-content class="ion-padding">
-            <ion-item>
-              <h5>Prihod: </h5>
-              <input
-                class="custom-input"
-                :value="formattedStartTime"
-                @input="updateStartTime($event.target.value)"
-                type="text"
-              />
-            </ion-item>
-            <ion-item>
-              <h5>Odhod: </h5>
-              <input
-                class="custom-input"
-                :value="formattedEndTime"
-                @input="updateEndTime($event.target.value)"
-                type="text"
-              />
-            </ion-item>
-            <ion-item>
-              <h5>Opis dela: </h5>
-              <input
-                class="custom-input"
-                v-model="editedItem.description"
-                type="text"
-              />
-            </ion-item>
-
-          </ion-content>
-        </ion-modal>
 
 
         <ion-modal :keep-contents-mounted="true">
           <ion-datetime
             id="start-datetime"
             presentation="date-time"
-            v-model="editedItem.startTime"
+            v-model="editedItem.startTimef"
           ></ion-datetime>
         </ion-modal>
 
@@ -123,65 +86,89 @@
           </ion-infinite-scroll-content>
         </ion-infinite-scroll>
 
-
       </div>
+      <ion-loading
+        :is-open="isLoading"
+        :message="loadingMessage"
+        spinner="circles"
+      ></ion-loading>
+
+      <!-- Progress Bar -->
+      <div
+        v-if="isDeleting"
+        class="progress-bar-container"
+      > <ion-progress-bar
+          :value="progress"
+          type="determinate"
+          color="danger"
+        ></ion-progress-bar> </div>
     </ion-content>
   </ion-page>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { modalController } from '@ionic/vue';
-import { IonButtons, IonContent, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonModal, IonFab, IonFabButton, IonIcon, IonList, IonCard, IonCardContent, IonDatetime, IonInfiniteScroll, IonInfiniteScrollContent, } from '@ionic/vue';
-import { add } from 'ionicons/icons';
+import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonModal, IonFab, IonFabButton, IonIcon, IonList, IonCard, IonCardContent, IonDatetime, IonInfiniteScroll, IonInfiniteScrollContent, } from '@ionic/vue';
+import { add, trash } from 'ionicons/icons';
 import ModalComponent from '../components/ModalComponent.vue';
 
+import { collection, getDocs, deleteDoc, doc, } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+
 const items = ref([]);
+
+const isLoading = ref(false);
+const isDeleting = ref(false);
+const progress = ref(0);
+const loadingMessage = ref('Deleting data...');
+
 const editedItem = ref({
   startTime: '2024-08-03T04:05:00.000Z', // Example initial value
   endTime: '2023-11-02T01:22:00', // Example initial value
 });
-const editedIndex = ref(null);
 
-const formattedStartTime = computed(() => {
-  const date = new Date(editedItem.value.startTime);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${day}.${month}.${year} ${hours}:${minutes}`;
-});
+const confirmDeleteAll = async () => {
+  const confirmed = window.confirm('Ali ste prepričani, da želite izbrisati vse vnose? Tega dejanja ni mogoče razveljaviti.');
+  if (confirmed) {
+    isLoading.value = true; // Show the loading spinner
+    isDeleting.value = true; // Show the progress bar
+    progress.value = 0; // Reset progress
+    loadingMessage.value = 'Brisanje vnosov...';
 
-const formattedEndTime = computed(() => {
-  const date = new Date(editedItem.value.endTime);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${day}.${month}.${year} ${hours}:${minutes}`;
-});
+    try {
+      const querySnapshot = await getDocs(collection(db, 'punches'));
+      const totalDocs = querySnapshot.size;
+      let deletedCount = 0;
 
-const updateStartTime = (value) => {
-  const [datePart, timePart] = value.split(' ');
-  const [day, month, year] = datePart.split('.');
-  const [hours, minutes] = timePart.split(':');
-  editedItem.value.startTime = new Date(`${year}-${month}-${day}T${hours}:${minutes}:00`).toISOString();
-};
-const updateEndTime = (value) => {
-  const [datePart, timePart] = value.split(' ');
-  const [day, month, year] = datePart.split('.');
-  const [hours, minutes] = timePart.split(':');
-  editedItem.value.endTime = new Date(`${year}-${month}-${day}T${hours}:${minutes}:00`).toISOString();
+      for (const document of querySnapshot.docs) {
+        await deleteDoc(doc(db, 'punches', document.id));
+        deletedCount++;
+        progress.value = deletedCount / totalDocs; // Update progress
+      }
+
+      loadItemsFromFirebase();
+      console.log('All punches deleted from Firebase');
+    } catch (error) {
+      console.error('Error deleting punches from Firebase:', error);
+    }
+
+    isLoading.value = false; // Hide the loading spinner
+    isDeleting.value = false; // Hide the progress bar
+
+  }
 };
 
-const loadItemsFromLocalStorage = () => {
-  const storedItems = localStorage.getItem('items');
-  if (storedItems) {
-    items.value = JSON.parse(storedItems)
-      .filter(item => item.startTime) // Filter out items where startTime is null or empty
-      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime
+const loadItemsFromFirebase = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'punches'));
+    items.value = querySnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => item.startTime) // Filter out items where startTime is null or empty 
+      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime 
+
+  } catch (error) {
+    console.error('Error fetching items from Firebase:', error);
   }
 };
 
@@ -242,6 +229,10 @@ const calculateOvertime = (startTime, endTime) => {
   } else { // Saturday and Sunday
     overtime = duration;
   }
+  // If overtime is negative, set it to 00:00 
+  if (overtime < 0) {
+    overtime = 0;
+  }
 
   const hours = Math.floor(overtime / (1000 * 60 * 60));
   const minutes = Math.floor((overtime % (1000 * 60 * 60)) / (1000 * 60));
@@ -254,7 +245,7 @@ const openNewModal = async (item = null, isEditing = false) => {
     component: ModalComponent,
     componentProps: {
       item,
-
+      isEditing
     },
   });
 
@@ -276,47 +267,39 @@ const openNewModal = async (item = null, isEditing = false) => {
   return await modal.present();
 };
 
-const confirm = async () => {
-  items.value[editedIndex.value] = { ...editedItem.value }; // Update the item
-  saveItemsToLocalStorage(items.value); // Save the items to local storage
-  const modal = document.querySelector('ion-modal');
-  if (modal) {
-    await modal.dismiss({
-      'dismissed': true,
-      'role': 'confirm'
-    });
-    console.log(modal.dismiss.role);
-
-    console.log('Confirm clicked and modal dismissed'); // Log when confirm is clicked and modal is dismissed
-
-  } else {
-    console.log('Modal not found'); // Log if modal is not found
-  }
-};
-
-const cancel = async () => {
-  const modal = document.querySelector('ion-modal');
-  if (modal) {
-    await modal.dismiss();
-    console.log('Cancel clicked and modal dismissed'); // Log when cancel is clicked and modal is dismissed
-  } else {
-    console.log('Modal not found'); // Log if modal is not found
-  }
-};
-
 
 const saveItemsToLocalStorage = (newItems) => {
   localStorage.setItem('items', JSON.stringify(newItems));
 };
 
 
-const deleteItem = (index) => {
-  items.value.splice(index, 1);
-  saveItemsToLocalStorage(items.value);
+const deleteItem = async (itemId) => {
+  try {
+    // Delete the item from Firebase
+    await deleteDoc(doc(db, 'punches', itemId));
+    console.log('Item deleted from Firebase:', itemId);
+
+    // Update local state
+    items.value = items.value.filter(item => item.id !== itemId);
+  } catch (error) {
+    console.error('Error deleting item from Firebase:', error);
+  }
 };
 
+const handleDelete = (index) => {
+  const itemToDelete = items.value[index];
+  if (itemToDelete) {
+    deleteItem(itemToDelete.id);
+  } else {
+    console.error('Item not found at index:', index);
+  }
+};
+
+
+
+
 onMounted(() => {
-  loadItemsFromLocalStorage();
+  loadItemsFromFirebase();
 });
 </script>
 
@@ -341,5 +324,15 @@ onMounted(() => {
   border-color: var(--ion-color-primary, #3880ff);
   box-shadow: 0 0 0 2px var(--ion-color-primary, #3880ff);
   outline: none;
+}
+
+.progress-bar-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 10px;
+  background-color: white;
+  z-index: 1000;
 }
 </style>

@@ -151,8 +151,9 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-
-import { IonButtons, IonContent, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonSelect, IonSelectOption } from '@ionic/vue';
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonSelect, IonSelectOption } from '@ionic/vue';
 const items = ref([]);
 
 const month = ref('');
@@ -175,13 +176,6 @@ const holidays = [
   // Add more holidays as needed
 ];
 const showTable = ref(false); // Boolean flag to control table visibility
-
-const loadItemsFromLocalStorage = () => {
-  const storedItems = localStorage.getItem('items');
-  if (storedItems) {
-    items.value = JSON.parse(storedItems);
-  }
-};
 
 
 const formatDate = (timestamp) => {
@@ -227,7 +221,6 @@ const getTotal = () => {
   const roundedHours = Math.floor(totalOvertime) - 1;
   return roundedHours > 0 ? roundedHours : 0;
 };
-
 
 
 const printDiv = (divId) => {
@@ -311,7 +304,6 @@ const createReport = () => {
   monthName.value = monthNames[month.value - 1];
   showTable.value = true;
 };
-
 const filterItems = (items, startDate, endDate) => {
   const start = new Date(startDate).getTime();
   const end = new Date(endDate).getTime();
@@ -352,7 +344,6 @@ const filterItems = (items, startDate, endDate) => {
 };
 
 
-
 const filteredItems = computed(() => {
   const startDate = `${year.value}-${String(month.value).padStart(2, '0')}-01`;
   const endDate = `${year.value}-${String(month.value).padStart(2, '0')}-01`;
@@ -361,9 +352,22 @@ const filteredItems = computed(() => {
   return filterItems(items.value, startDate, end.toISOString().split('T')[0]);
 });
 
+const loadItemsFromFirebase = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'punches'));
+    items.value = querySnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => item.startTime) // Filter out items where startTime is null or empty 
+      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime 
+
+  } catch (error) {
+    console.error('Error fetching items from Firebase:', error);
+  }
+};
+
 
 onMounted(() => {
-  loadItemsFromLocalStorage();
+  loadItemsFromFirebase();
 });
 </script>
 

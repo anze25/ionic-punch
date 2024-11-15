@@ -33,14 +33,30 @@
                 <ion-label>{{ p.title }}</ion-label>
               </ion-item>
             </ion-menu-toggle>
-          </ion-list>
 
+            <!-- Logout Button -->
+            <ion-item
+              @click="logout"
+              lines="none"
+              :detail="false"
+              class="hydrated"
+            >
+              <ion-icon
+                aria-hidden="true"
+                slot="start"
+                :ios="logOutOutline"
+                :md="logOutSharp"
+              ></ion-icon>
+              <ion-label>Logout</ion-label>
+            </ion-item>
+          </ion-list>
         </ion-content>
       </ion-menu>
       <ion-router-outlet id="main-content"></ion-router-outlet>
     </ion-split-pane>
   </ion-app>
 </template>
+
 
 <script setup>
 import {
@@ -55,18 +71,19 @@ import {
   IonNote,
   IonRouterOutlet,
   IonSplitPane,
-
 } from '@ionic/vue';
 import { ref } from 'vue';
 import {
-
   statsChartSharp,
   mailOutline,
   homeSharp,
   cloudUploadSharp,
-  listSharp
-
+  listSharp,
+  logOutOutline,
+  logOutSharp,
 } from 'ionicons/icons';
+import { getAuth, signOut } from 'firebase/auth';
+import { useRouter } from 'vue-router';
 
 const selectedIndex = ref(0);
 const appPages = [
@@ -91,15 +108,27 @@ const appPages = [
     url: '/folder/Report',
     mdIcon: statsChartSharp,
   },
-
 ];
-
 
 const path = window.location.pathname.split('folder/')[1];
 if (path !== undefined) {
   selectedIndex.value = appPages.findIndex((page) => page.title.toLowerCase() === path.toLowerCase());
 }
+
+const auth = getAuth();
+const router = useRouter();
+
+const logout = async () => {
+  try {
+    await signOut(auth);
+    console.log('User logged out');
+    router.push('/folder/Auth'); // Redirect to AuthPage after logout
+  } catch (error) {
+    console.error('Error logging out:', error);
+  }
+};
 </script>
+
 
 <style>
 ion-menu ion-content {
