@@ -10,12 +10,16 @@
       </ion-toolbar>
     </ion-header>
 
-    <ion-content :fullscreen="true">
+    <ion-content
+      :fullscreen="true"
+      class="ion-padding"
+    >
 
 
       <div id="container">
         <ion-grid>
           <ion-row>
+
             <ion-col size="6">
               <ion-button
                 shape="round"
@@ -59,7 +63,11 @@
 
         <ion-grid v-if="isPunchinDisabled">
           <ion-row>
-            Začetek dela: <ion-badge>{{ punchinData.startTime }}</ion-badge>
+            <ion-spinner
+              v-if="isLoadingPunchin"
+              name="crescent"
+            ></ion-spinner>
+            Začetek dela: <ion-badge>{{ startTime }}</ion-badge>
           </ion-row>
           <ion-row>Trajanje: <ion-badge>{{ timeElapsed }}</ion-badge></ion-row>
           <ion-row>
@@ -110,16 +118,21 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonBadge, IonGrid, IonSelect, IonSelectOption, } from '@ionic/vue';
+import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonBadge, IonGrid, IonSelect, IonSelectOption, IonSpinner } from '@ionic/vue';
 import PunchInModal from '../components/PunchInModal.vue';
 import PunchOutModal from '../components/PunchOutModal.vue';
 import { modalController } from '@ionic/vue';
-import { collection, addDoc, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, where, } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+
+const auth = getAuth();
+const user = auth.currentUser;
 
 const items = ref([]);
 
 const isLoading = ref(false);
+const isLoadingPunchin = ref(true);
 const progress = ref(0);
 const loadingMessage = ref('Deleting data...');
 
@@ -130,17 +143,44 @@ const punchinData = ref(null);
 const description = ref('');
 const allDescriptions = ref([]);
 
-const checkPunchinData = () => {
-  const data = localStorage.getItem('punchinData');
-  if (data) {
-    punchinData.value = JSON.parse(data);
-    isPunchinDisabled.value = true;
-  } else {
+const startTime = computed(() => punchinData.value ? punchinData.value.startTime : '');
+
+const checkPunchinData = async (user) => {
+  if (!user) {
+    console.error('No user is logged in.');
     punchinData.value = null;
     isPunchinDisabled.value = false;
+    isLoadingPunchin.value = false;
+    return;
   }
 
+  try {
+    // Fetch punchinData from Firebase for the logged-in user
+    const q = query(collection(db, 'logsIn'), where('userId', '==', user.uid));
+    const querySnapshot = await getDocs(q);
 
+    if (!querySnapshot.empty) {
+      const data = querySnapshot.docs[0].data();
+      console.log('Fetched data:', data); // Debugging log
+      punchinData.value = data;
+      isPunchinDisabled.value = true;
+
+
+      // Check if startTime exists
+      if (!punchinData.value.startTime) {
+        console.error('startTime is undefined:', punchinData.value);
+      }
+    } else {
+      punchinData.value = null;
+      isPunchinDisabled.value = false;
+    }
+  } catch (error) {
+    console.error('Error fetching punchinData from Firebase:', error);
+    punchinData.value = null;
+    isPunchinDisabled.value = false;
+  } finally {
+    isLoadingPunchin.value = false; // Hide the spinner
+  }
 };
 
 const timeElapsed = computed(() => {
@@ -201,22 +241,32 @@ const openPunchOutModal = async () => {
 };
 
 
-const punchIn = () => {
+const punchIn = async () => {
   const now = new Date();
   const startDate = now.toLocaleDateString('en-CA'); // Format as YYYY-MM-DD
   const startTime = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }); // Format as HH:mm
-
 
 
   const punchinData = {
     loggedIn: true,
     startDate,
     startTime,
+    userId: user.uid
   };
 
-  localStorage.setItem('punchinData', JSON.stringify(punchinData));
-  isPunchinDisabled.value = true;
-  console.log('Punchin Data:', punchinData);
+  try {
+    // Save the punchinData to Firestore
+    const docRef = await addDoc(collection(db, 'logsIn'), punchinData);
+    console.log('Document written with ID: ', docRef.id);
+
+    // Optionally, you can update the localStorage with the new punchinData
+    localStorage.setItem('punchinData', JSON.stringify(punchinData));
+    isPunchinDisabled.value = true;
+    modalController.dismiss(punchinData);
+  } catch (error) {
+    console.error('Error adding document: ', error);
+    alert('Error saving data to Firebase.');
+  }
 
   checkPunchinData();
 };
@@ -226,24 +276,45 @@ const punchOut = async () => {
   const endDate = now.toISOString().slice(0, 10);
   const endTime = now.toLocaleTimeString('sl-SI', { hour: '2-digit', minute: '2-digit' }); // Format as HH:mm
 
-  const punchinData = JSON.parse(localStorage.getItem('punchinData'));
-  if (!punchinData) {
+  if (!punchinData.value) {
     alert('No punchin data found.');
+    return;
+  }
+
+  if (!user) {
+    alert('No user is logged in.');
     return;
   }
 
   const newItem = {
     description: description.value,
     endTime: new Date(`${endDate}T${endTime}`).toISOString(),
-    startTime: new Date(`${punchinData.startDate}T${punchinData.startTime}`).toISOString(),
+    startTime: new Date(`${punchinData.value.startDate}T${punchinData.value.startTime}`).toISOString(),
+    userId: user.uid,
   };
 
   try {
-    // Save the new item to Firebase 
-    await addDoc(collection(db, 'punches'), newItem);
-    console.log('Punchout Data saved to Firebase:', newItem);
+    // Save the new item to Firestore
+    const docRef = await addDoc(collection(db, 'punches'), newItem);
+    console.log('Document written with ID: ', docRef.id);
+
+    // Optionally, you can update the localStorage with the new item
+    const items = JSON.parse(localStorage.getItem('items')) || [];
+    items.push({ id: docRef.id, ...newItem });
+    localStorage.setItem('items', JSON.stringify(items));
+
+    // Delete punchinData from Firebase
+    const q = query(collection(db, 'logsIn'), where('userId', '==', user.uid));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const punchinDocId = querySnapshot.docs[0].id;
+      await deleteDoc(doc(db, 'logsIn', punchinDocId));
+      console.log('Punchin data deleted from Firebase:', punchinDocId);
+    }
   }
-  catch (error) { console.error('Error saving punchout data to Firebase:', error); }
+  catch (error) {
+    console.error('Error saving punchout data to Firebase:', error);
+  }
 
   items.value.push(newItem);
   localStorage.removeItem('punchinData');
@@ -321,8 +392,13 @@ const handleDescriptionChange = async (e) => {
   }
 };
 onMounted(() => {
-
-  checkPunchinData();
+  onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      await checkPunchinData(user);
+    } else {
+      isLoadingPunchin.value = false; // Hide the spinner if no user is logged in
+    }
+  });
   loadDescriptions();
 });
 </script>

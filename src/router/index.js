@@ -28,6 +28,11 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/folder/Settings',
+    component: () => import('../views/PunchesSettings.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/folder/Auth',
     component: AuthPage,
   },

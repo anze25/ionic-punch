@@ -9,7 +9,10 @@
       </ion-toolbar>
     </ion-header>
 
-    <ion-content :fullscreen="true">
+    <ion-content
+      :fullscreen="true"
+      class="ion-padding"
+    >
       <ion-fab
         vertical="bottom"
         horizontal="center"
@@ -20,6 +23,7 @@
             <ion-icon :icon="add"></ion-icon>
           </ion-fab-button>
           <ion-fab-button
+            v-if="items.length > 0"
             color="danger"
             @click="confirmDeleteAll"
           >
@@ -63,7 +67,7 @@
           <ion-datetime
             id="start-datetime"
             presentation="date-time"
-            v-model="editedItem.startTimef"
+            v-model="editedItem.startTime"
           ></ion-datetime>
         </ion-modal>
 
@@ -115,6 +119,12 @@ import ModalComponent from '../components/ModalComponent.vue';
 
 import { collection, getDocs, deleteDoc, doc, } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { getAuth } from 'firebase/auth';
+
+import { loadItemsFromFirebase } from '../firebaseUtils';
+
+const auth = getAuth();
+const user = auth.currentUser;
 
 const items = ref([]);
 
@@ -137,16 +147,27 @@ const confirmDeleteAll = async () => {
     loadingMessage.value = 'Brisanje vnosov...';
 
     try {
+
+      if (!user) {
+        console.error('No user is logged in.');
+        isLoading.value = false; // Hide the loading spinner
+        isDeleting.value = false; // Hide the progress bar
+        return;
+      }
+
       const querySnapshot = await getDocs(collection(db, 'punches'));
       const totalDocs = querySnapshot.size;
       let deletedCount = 0;
 
       for (const document of querySnapshot.docs) {
-        await deleteDoc(doc(db, 'punches', document.id));
-        deletedCount++;
-        progress.value = deletedCount / totalDocs; // Update progress
+        const data = document.data();
+        if (data.userId === user.uid) {
+          await deleteDoc(doc(db, 'punches', document.id));
+          deletedCount++;
+          progress.value = deletedCount / totalDocs; // Update progress
+        }
       }
-
+      localStorage.removeItem('items'); // Remove items for loading all from Firebase
       loadItemsFromFirebase();
       console.log('All punches deleted from Firebase');
     } catch (error) {
@@ -155,20 +176,6 @@ const confirmDeleteAll = async () => {
 
     isLoading.value = false; // Hide the loading spinner
     isDeleting.value = false; // Hide the progress bar
-
-  }
-};
-
-const loadItemsFromFirebase = async () => {
-  try {
-    const querySnapshot = await getDocs(collection(db, 'punches'));
-    items.value = querySnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(item => item.startTime) // Filter out items where startTime is null or empty 
-      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime 
-
-  } catch (error) {
-    console.error('Error fetching items from Firebase:', error);
   }
 };
 
@@ -267,20 +274,17 @@ const openNewModal = async (item = null, isEditing = false) => {
   return await modal.present();
 };
 
-
-const saveItemsToLocalStorage = (newItems) => {
-  localStorage.setItem('items', JSON.stringify(newItems));
-};
-
-
 const deleteItem = async (itemId) => {
   try {
     // Delete the item from Firebase
     await deleteDoc(doc(db, 'punches', itemId));
     console.log('Item deleted from Firebase:', itemId);
 
-    // Update local state
-    items.value = items.value.filter(item => item.id !== itemId);
+    // Update localStorage
+    const storedItems = JSON.parse(localStorage.getItem('items')) || [];
+    const updatedItems = storedItems.filter(item => item.id !== itemId);
+    localStorage.setItem('items', JSON.stringify(updatedItems));
+    await loadItemsFromFirebase(user, items, isLoading, loadingMessage);
   } catch (error) {
     console.error('Error deleting item from Firebase:', error);
   }
@@ -295,11 +299,8 @@ const handleDelete = (index) => {
   }
 };
 
-
-
-
-onMounted(() => {
-  loadItemsFromFirebase();
+onMounted(async () => {
+  await loadItemsFromFirebase(user, items, isLoading, loadingMessage);
 });
 </script>
 

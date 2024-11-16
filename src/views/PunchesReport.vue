@@ -9,7 +9,10 @@
       </ion-toolbar>
     </ion-header>
 
-    <ion-content :fullscreen="true">
+    <ion-content
+      :fullscreen="true"
+      class="ion-padding"
+    >
       <ion-header collapse="condense">
         <ion-toolbar>
           <ion-title size="large">{{ $route.params.id }}</ion-title>
@@ -74,7 +77,7 @@
             <h2 style="text-align: left">POTRDILO O OPRAVLJENH URAH</h2>
             <p>
               <span style="width: 100%; text-align: left; padding-left: 1em;">delavec (-ka) </span>
-              <span id="user">{{ user }}</span>
+              <span id="user">{{ displayName }}</span>
               <span style="padding-left: 3em;">mesec: <span
                   style="text-transform: uppercase; text-decoration: underline"
                 >{{ monthName }}</span></span>
@@ -154,13 +157,37 @@ import { ref, computed, onMounted } from 'vue';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonSelect, IonSelectOption } from '@ionic/vue';
+import { getAuth } from 'firebase/auth';
+
+const displayName = ref('');
+const auth = getAuth();
+const getUserDisplayName = async () => {
+
+  const user = auth.currentUser;
+
+  if (user) {
+    await user.reload(); // Reload the user profile
+    return user.displayName;
+  } else {
+    console.error('No user is logged in.');
+    return null;
+  }
+
+
+};
+const fetchDisplayName = async () => {
+  const displayName = await getUserDisplayName();
+
+  console.log('Logged-in user display name:', displayName);
+};
+fetchDisplayName();
+
 const items = ref([]);
 
 const month = ref('');
 const year = ref('');
 const yearOptions = Array.from({ length: 31 }, (_, i) => 2020 + i);
 
-const user = ref('ANŽE ŠUŠTAR');
 const monthName = ref('');
 const monthNames = [
   'Januar', 'Februar', 'Marec', 'April', 'Maj', 'Junij',
@@ -176,7 +203,6 @@ const holidays = [
   // Add more holidays as needed
 ];
 const showTable = ref(false); // Boolean flag to control table visibility
-
 
 const formatDate = (timestamp) => {
   const date = new Date(timestamp);
@@ -354,20 +380,35 @@ const filteredItems = computed(() => {
 
 const loadItemsFromFirebase = async () => {
   try {
+
+    // Check if items are already in localStorage
+    const cachedItems = localStorage.getItem('items');
+    if (cachedItems) {
+      items.value = JSON.parse(cachedItems);
+      return;
+    }
     const querySnapshot = await getDocs(collection(db, 'punches'));
     items.value = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(item => item.startTime) // Filter out items where startTime is null or empty 
       .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime 
 
+    // Store items in localStorage
+    localStorage.setItem('items', JSON.stringify(items.value));
   } catch (error) {
     console.error('Error fetching items from Firebase:', error);
   }
 };
 
 
-onMounted(() => {
+onMounted(async () => {
   loadItemsFromFirebase();
+  const user = auth.currentUser; if (user) {
+    await user.reload(); // Reload the user profile to get the latest displayName 
+    displayName.value = user.displayName || '';
+  } else {
+    console.error('No user is logged in.');
+  }
 });
 </script>
 
@@ -382,7 +423,7 @@ onMounted(() => {
 }
 
 #user {
-
+  text-transform: uppercase;
   display: inline-block;
   border-bottom: solid 1px black;
   width: 97mm;

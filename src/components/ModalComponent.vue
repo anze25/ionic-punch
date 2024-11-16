@@ -63,6 +63,9 @@ import { modalController } from '@ionic/vue';
 import { collection, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebaseConfig'; // Ensure you have your Firebase configuration set up
 import { IonButtons, IonHeader, IonTitle, IonToolbar } from '@ionic/vue';
+import { getAuth } from 'firebase/auth';
+
+
 const props = defineProps({
   item: Object,
   isEditing: Boolean,
@@ -94,11 +97,20 @@ const dismissModal = () => {
 };
 
 const saveItem = async () => {
+
   try {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      alert('No user is logged in.');
+      return;
+    }
+
     const newItem = {
       description: description.value,
       endTime: new Date(`${endDate.value}T${endTime.value}`).toISOString(),
       startTime: new Date(`${startDate.value}T${startTime.value}`).toISOString(),
+      userId: user.uid,
     };
 
     if (props.isEditing && props.item) {

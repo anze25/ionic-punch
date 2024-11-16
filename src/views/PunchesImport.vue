@@ -9,16 +9,19 @@
       </ion-toolbar>
     </ion-header>
 
-    <ion-content :fullscreen="true">
+    <ion-content
+      :fullscreen="true"
+      class="ion-padding"
+    >
       <ion-header collapse="condense">
         <ion-toolbar>
           <ion-title size="large">{{ $route.params.id }}</ion-title>
         </ion-toolbar>
       </ion-header>
 
-      <div id="container">
+      <div>
         <ion-item class="custom-item">
-          <ion-label position="stacked">Import WorkClock csv</ion-label>
+          <ion-label position="stacked">Uvoz WorkClock csv</ion-label>
           <input
             type="file"
             accept=".csv"
@@ -28,7 +31,7 @@
         </ion-item>
 
         <ion-item class="custom-item">
-          <ion-label position="stacked">Import Jantar csv</ion-label>
+          <ion-label position="stacked">Uvoz Jantar csv</ion-label>
           <input
             type="file"
             accept=".csv"
@@ -58,16 +61,20 @@
 
 <script setup>
 import { ref } from 'vue';
-// import { useItemsStore } from '../store.js';
+
 import Papa from 'papaparse';
 import { IonButtons, IonContent, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar } from '@ionic/vue';
 import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
+import { getAuth } from 'firebase/auth';
+
 const items = ref([]);
 const allDescriptions = ref([]);
 const isLoading = ref(false);
 const progress = ref(0);
 const loadingMessage = ref('Uvažam vnose...');
+const auth = getAuth();
+const user = auth.currentUser;
 
 // Workclock csv
 const handleFileUpload = (event) => {
@@ -92,6 +99,12 @@ const processData = async (data) => {
   isLoading.value = true; // Show the loading spinner
   progress.value = 0; // Reset progress
 
+
+  if (!user) {
+    alert('No user is logged in.');
+    return;
+  }
+
   const processedItems = data.slice(1).map(row => {
     const startTime = new Date(row[0]);
     const endTime = new Date(row[1]);
@@ -103,7 +116,8 @@ const processData = async (data) => {
     return {
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
-      description: row[6]
+      description: row[6],
+      userId: user.uid,
     };
   }).filter(item => item !== null); // Filter out invalid items
 
@@ -133,6 +147,8 @@ const processData = async (data) => {
       }
       progress.value = (i + 1) / processedItems.length; // Update progress
     }
+    localStorage.removeItem('items'); // Remove items for loading all from Firebase
+    await loadItemsFromFirebase();
     console.log('Items saved or updated in Firebase');
   } catch (error) {
     console.error('Error saving or updating data in Firebase:', error);
@@ -155,12 +171,55 @@ const processData = async (data) => {
   isLoading.value = false; // Hide the loading spinner
 };
 
+const loadItemsFromFirebase = async () => {
+  isLoading.value = true;
+  loadingMessage.value = 'Nalagam vpise...';
+
+  try {
+    if (!user) {
+      console.error('No user is logged in.');
+      return;
+    }
+
+    // Check if items are already in localStorage
+    const cachedItems = localStorage.getItem('items');
+    if (cachedItems) {
+      items.value = JSON.parse(cachedItems);
+      isLoading.value = false;
+      return;
+    }
+
+    // Fetch items from Firebase
+    const querySnapshot = await getDocs(collection(db, 'punches'));
+    items.value = querySnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => item.startTime && item.userId === user.uid) // Filter out items where startTime is null or empty and items not belonging to the logged-in user
+      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime
+
+    // Store items in localStorage
+    localStorage.setItem('items', JSON.stringify(items.value));
+
+  } catch (error) {
+    console.error('Error fetching items from Firebase:', error);
+  }
+
+  isLoading.value = false;
+};
 const loadDescriptions = async () => {
   try {
+
+    if (!user) {
+      console.error('No user is logged in.');
+      return [];
+    }
+
     const querySnapshot = await getDocs(collection(db, 'descriptions'));
     const descriptions = [];
     querySnapshot.forEach((doc) => {
-      descriptions.push(doc.data().description);
+      const data = doc.data();
+      if (data.userId === user.uid) {
+        descriptions.push(data.description);
+      }
     });
 
     const filteredDescriptions = descriptions.filter(desc => desc !== null && desc !== undefined);
@@ -173,9 +232,10 @@ const loadDescriptions = async () => {
   }
 };
 
+
 const saveDescription = async (newDescription) => {
   try {
-    await addDoc(collection(db, 'descriptions'), { description: newDescription });
+    await addDoc(collection(db, 'descriptions'), { description: newDescription, userId: user.uid, });
     await loadDescriptions();
   } catch (error) {
     console.error('Error saving description to Firebase:', error);
@@ -207,6 +267,11 @@ const processSecondData = async (data) => {
   isLoading.value = true; // Show the loading spinner
   progress.value = 0; // Reset progress
 
+  if (!user) {
+    alert('No user is logged in.');
+    return;
+  }
+
   const roundToNearest5Minutes = (dateString) => {
     const date = new Date(dateString);
     const ms = 1000 * 60 * 5; // 5 minutes in milliseconds
@@ -232,7 +297,8 @@ const processSecondData = async (data) => {
       const endTimeString = `${year}-${month}-${day} ${row[4]}`;
       return {
         startTime: formatDate(roundToNearest5Minutes(startTimeString)),
-        endTime: formatDate(roundToNearest5Minutes(endTimeString))
+        endTime: formatDate(roundToNearest5Minutes(endTimeString)),
+        userId: user.uid,
       };
     });
 
@@ -248,7 +314,7 @@ const processSecondData = async (data) => {
           return {
             ...item,
             startTime: newItem.startTime,
-            endTime: newItem.endTime
+            endTime: newItem.endTime,
           };
         }
         return item;
