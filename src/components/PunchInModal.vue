@@ -2,9 +2,9 @@
 <template>
   <ion-header>
     <ion-toolbar>
-      <ion-title>Add Punchin</ion-title>
+      <ion-title>Vnesi prihod</ion-title>
       <ion-buttons slot="end">
-        <ion-button @click="dismissModal">Close</ion-button>
+        <ion-button @click="dismissModal">Zapri</ion-button>
       </ion-buttons>
     </ion-toolbar>
   </ion-header>
@@ -30,7 +30,7 @@
       <ion-button
         expand="full"
         type="submit"
-      >Confirm</ion-button>
+      >Potrdi</ion-button>
     </form>
   </ion-content>
 </template>

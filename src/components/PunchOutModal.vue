@@ -2,7 +2,7 @@
 <template>
   <ion-header>
     <ion-toolbar>
-      <ion-title>Add Punchout</ion-title>
+      <ion-title>Vnesi Odhod</ion-title>
       <ion-buttons slot="end">
         <ion-button @click="dismissModal">Close</ion-button>
       </ion-buttons>
@@ -37,7 +37,7 @@
       <ion-button
         expand="full"
         type="submit"
-      >Confirm</ion-button>
+      >Potrdi</ion-button>
     </form>
   </ion-content>
 </template>

@@ -201,7 +201,6 @@ const saveDescription = async (newDescription) => {
 };
 
 const saveItem = async () => {
-
   try {
     const auth = getAuth();
     const user = auth.currentUser;
@@ -219,38 +218,47 @@ const saveItem = async () => {
     };
 
     if (props.isEditing && props.item) {
-      // Delete existing item in Firebase
-      const itemDoc = doc(db, 'punches', props.item.id);
-      const itemSnapshot = await getDoc(itemDoc);
+      // Fetch the correct document ID from Firebase
+      const q = query(collection(db, 'punches'), where('userId', '==', user.uid), where('startTime', '==', props.item.startTime), where('endTime', '==', props.item.endTime));
+      const querySnapshot = await getDocs(q);
 
-      if (itemSnapshot.exists()) {
+      if (!querySnapshot.empty) {
+        const itemDoc = querySnapshot.docs[0].ref;
         await deleteDoc(itemDoc);
-        console.log('Item deleted from Firebase:', props.item.id);
+        console.log('Item deleted from Firebase:', itemDoc.id);
 
         // Add new item to Firebase
         await addDoc(collection(db, 'punches'), newItem);
         await saveDescription(newItem.description);
         console.log('New item added to Firebase:', newItem);
+
+        // Update the items state
+        items.value = items.value.map(item => item.id === props.item.id ? { ...newItem, id: itemDoc.id } : item);
       } else {
         console.error('Item not found for deletion:', props.item.id);
       }
     } else {
       // Add new item to Firebase
-      await addDoc(collection(db, 'punches'), newItem);
+      const docRef = await addDoc(collection(db, 'punches'), newItem);
       await saveDescription(newItem.description);
-      localStorage.removeItem('items')
-      await loadItemsFromFirebase();
       console.log('New item added to Firebase:', newItem);
+
+      // Add the new item to the items state
+      items.value.push({ ...newItem, id: docRef.id });
     }
+
+    // Clear the localStorage cache
+    localStorage.removeItem('items');
+
+    // Fetch the latest items from Firebase
+    await loadItemsFromFirebase();
 
     modalController.dismiss(newItem);
   } catch (error) {
     console.error('Error saving item to Firebase:', error);
     alert('Vnesi pravilno uro in datum.');
   }
-
-
-
-
 };
+
+
 </script>
