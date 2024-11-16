@@ -40,7 +40,7 @@ Testni uporabnik
 email: test@test.com
 geslo: 12345678
 
-![qpunch]([https://github.com/anze25/ionic-punchit/blob/master/Screenshot.png](https://github.com/anze25/ionic-punch/blob/master/Screenshot.png)?raw=true)
+![Screenshot](https://github.com/user-attachments/assets/1f2a52e4-b861-4f5c-b835-9b8f5e4e3fd4)
 
 
 
