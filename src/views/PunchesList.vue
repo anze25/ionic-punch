@@ -147,7 +147,8 @@ const confirmDeleteAll = async () => {
     loadingMessage.value = 'Brisanje vnosov...';
 
     try {
-
+      const auth = getAuth();
+      const user = auth.currentUser;
       if (!user) {
         console.error('No user is logged in.');
         isLoading.value = false; // Hide the loading spinner
@@ -167,8 +168,16 @@ const confirmDeleteAll = async () => {
           progress.value = deletedCount / totalDocs; // Update progress
         }
       }
-      localStorage.removeItem('items'); // Remove items for loading all from Firebase
-      loadItemsFromFirebase();
+
+      // Clear the localStorage cache
+      localStorage.removeItem('items');
+
+      // Manually update the items state
+      items.value = [];
+
+      // Fetch the latest items from Firebase
+      await loadItemsFromFirebase();
+
       console.log('All punches deleted from Firebase');
     } catch (error) {
       console.error('Error deleting punches from Firebase:', error);
@@ -178,6 +187,7 @@ const confirmDeleteAll = async () => {
     isDeleting.value = false; // Hide the progress bar
   }
 };
+
 
 const loadMoreData = (event) => {
   console.log('Current items length:', items.value.length);

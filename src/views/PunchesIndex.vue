@@ -98,14 +98,14 @@
       </div>
       <!-- Loading Spinner -->
       <ion-loading
-        :is-open="isLoading"
+        :is-open="isLoadingPunchin"
         :message="loadingMessage"
         spinner="circles"
       ></ion-loading>
 
       <!-- Progress Bar -->
       <ion-progress-bar
-        v-if="isLoading"
+        v-if="isLoadingPunchin"
         :value="progress"
         color="danger"
         type="determinate"
@@ -126,13 +126,14 @@ import { collection, addDoc, getDocs, deleteDoc, doc, query, where, } from 'fire
 import { db } from '../firebaseConfig';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
+
 const auth = getAuth();
 const user = auth.currentUser;
 
 const items = ref([]);
 
-const isLoading = ref(false);
 const isLoadingPunchin = ref(true);
+const isLoading = ref(false);
 const progress = ref(0);
 const loadingMessage = ref('Deleting data...');
 
@@ -147,7 +148,7 @@ const startTime = computed(() => punchinData.value ? punchinData.value.startTime
 
 const checkPunchinData = async (user) => {
   if (!user) {
-    console.error('No user is logged in.');
+
     punchinData.value = null;
     isPunchinDisabled.value = false;
     isLoadingPunchin.value = false;
@@ -325,8 +326,28 @@ const punchOut = async () => {
 };
 
 const loadDescriptions = async () => {
+  allDescriptions.value = [];
   try {
-    const querySnapshot = await getDocs(collection(db, 'descriptions'));
+
+    // Check if descriptions are already in localStorage
+    const cachedDescriptions = localStorage.getItem('allDescriptions');
+    if (cachedDescriptions) {
+      console.log('Loaded descriptions from localStorage:', cachedDescriptions); // Debugging log
+      allDescriptions.value = JSON.parse(cachedDescriptions);
+      return;
+    }
+
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      console.error('No user is logged in.');
+      allDescriptions.value = [];
+      return;
+    }
+
+    // Fetch descriptions from Firebase for the logged-in user
+    const q = query(collection(db, 'descriptions'), where('userId', '==', user.uid));
+    const querySnapshot = await getDocs(q);
     const descriptions = [];
     querySnapshot.forEach((doc) => {
       descriptions.push(doc.data().description);
@@ -334,11 +355,17 @@ const loadDescriptions = async () => {
 
     const filteredDescriptions = descriptions.filter(desc => desc !== null && desc !== undefined);
     allDescriptions.value = filteredDescriptions.sort((a, b) => a.localeCompare(b));
+
+    // Store descriptions in localStorage
+    localStorage.setItem('allDescriptions', JSON.stringify(allDescriptions.value));
+    console.log('Fetched and stored descriptions:', allDescriptions.value); // Debugging log
   } catch (error) {
     console.error('Error loading descriptions from Firebase:', error);
     allDescriptions.value = [];
   }
 };
+
+
 
 const deleteAllDescriptions = async () => {
   isLoading.value = true; // Show the loading spinner
@@ -355,7 +382,7 @@ const deleteAllDescriptions = async () => {
       deletedCount++;
       progress.value = deletedCount / totalDocs; // Update progress
     }
-
+    localStorage.removeItem('allDescriptions')
     console.log('All descriptions deleted from Firebase');
     allDescriptions.value = [];
   } catch (error) {
@@ -367,12 +394,26 @@ const deleteAllDescriptions = async () => {
 
 const saveDescription = async (newDescription) => {
   try {
-    await addDoc(collection(db, 'descriptions'), { description: newDescription });
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      console.error('No user is logged in.');
+      return;
+    }
+
+    await addDoc(collection(db, 'descriptions'), { description: newDescription, userId: user.uid });
+
+    // Clear the localStorage cache
+    localStorage.removeItem('allDescriptions');
+
+    // Fetch the latest descriptions from Firebase
     loadDescriptions();
   } catch (error) {
     console.error('Error saving description to Firebase:', error);
   }
 };
+
+
 
 const handleDescriptionChange = async (e) => {
   const selectedValue = e.detail.value;
@@ -386,6 +427,7 @@ const handleDescriptionChange = async (e) => {
     const confirmDelete = confirm('Ali ste prepričani, da želite izbrisati vse opise? Tega dejanja ni mogoče razveljaviti.');
     if (confirmDelete) {
       await deleteAllDescriptions();
+
     }
   } else {
     description.value = selectedValue;
@@ -395,11 +437,12 @@ onMounted(() => {
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       await checkPunchinData(user);
+      loadDescriptions();
     } else {
       isLoadingPunchin.value = false; // Hide the spinner if no user is logged in
     }
   });
-  loadDescriptions();
+
 });
 </script>
 

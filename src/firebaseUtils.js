@@ -1,5 +1,7 @@
 // firebaseUtils.js
+import { ref, computed } from 'vue';
 import { getDocs, collection } from 'firebase/firestore';
+
 import { db } from './firebaseConfig'; // Adjust the import according to your project structure
 
 export const loadItemsFromFirebase = async (
@@ -40,3 +42,14 @@ export const loadItemsFromFirebase = async (
 
   isLoading.value = false;
 };
+
+const punchinData = ref(null);
+const isPunchinDisabled = ref(false);
+const isLoadingPunchin = ref(true); // Add a loading state
+
+// Computed property to access startTime
+export const startTime = computed(() =>
+  punchinData.value ? punchinData.value.startTime : ''
+);
+
+export { punchinData, isPunchinDisabled, isLoadingPunchin };

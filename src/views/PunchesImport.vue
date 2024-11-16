@@ -164,6 +164,7 @@ const processData = async (data) => {
       await saveDescription(newDescriptions[i]);
       progress.value = (i + 1) / newDescriptions.length; // Update progress
     }
+    localStorage.removeItem('allDescriptions');
     console.log('Descriptions saved to Firebase');
   } catch (error) {
     console.error('Error saving descriptions to Firebase:', error);
@@ -231,7 +232,6 @@ const loadDescriptions = async () => {
     return [];
   }
 };
-
 
 const saveDescription = async (newDescription) => {
   try {
@@ -335,6 +335,8 @@ const processSecondData = async (data) => {
         }
         progress.value = (i + 1) / newItems.length; // Update progress
       }
+      localStorage.removeItem('items'); // Remove items for loading all from Firebase
+      await loadItemsFromFirebase();
       console.log('Data updated in Firebase');
     } catch (error) {
       console.error('Error updating data in Firebase:', error);
