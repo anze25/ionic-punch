@@ -50,11 +50,11 @@
                     </strong>{{ calculateOvertime(item.startTime, item.endTime) }}
                   </div>
                   <div>
-                    <ion-button @click="openNewModal(item, true)">Edit</ion-button>
+                    <ion-button @click="openNewModal(item, true)"><ion-icon :icon="createSharp"></ion-icon></ion-button>
                     <ion-button
                       color="danger"
                       @click="handleDelete(index)"
-                    >Delete</ion-button>
+                    ><ion-icon :icon="trash"></ion-icon></ion-button>
                   </div>
                 </div>
               </ion-card-content>
@@ -85,7 +85,7 @@
         >
           <ion-infinite-scroll-content
             loadingSpinner="bubbles"
-            loadingText="Loading more data..."
+            loadingText="Nalagam ..."
           >
           </ion-infinite-scroll-content>
         </ion-infinite-scroll>
@@ -114,7 +114,7 @@
 import { ref, onMounted } from 'vue';
 import { modalController } from '@ionic/vue';
 import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonModal, IonFab, IonFabButton, IonIcon, IonList, IonCard, IonCardContent, IonDatetime, IonInfiniteScroll, IonInfiniteScrollContent, } from '@ionic/vue';
-import { add, trash } from 'ionicons/icons';
+import { add, trash, createSharp } from 'ionicons/icons';
 import ModalComponent from '../components/ModalComponent.vue';
 
 import { collection, getDocs, deleteDoc, doc, } from 'firebase/firestore';
@@ -176,7 +176,7 @@ const confirmDeleteAll = async () => {
       items.value = [];
 
       // Fetch the latest items from Firebase
-      await loadItemsFromFirebase();
+      await loadItemsFromFirebase(user, items, isLoading, loadingMessage);
 
       console.log('All punches deleted from Firebase');
     } catch (error) {
@@ -187,7 +187,6 @@ const confirmDeleteAll = async () => {
     isDeleting.value = false; // Hide the progress bar
   }
 };
-
 
 const loadMoreData = (event) => {
   console.log('Current items length:', items.value.length);
@@ -262,7 +261,8 @@ const openNewModal = async (item = null, isEditing = false) => {
     component: ModalComponent,
     componentProps: {
       item,
-      isEditing
+      isEditing,
+
     },
   });
 
@@ -277,9 +277,8 @@ const openNewModal = async (item = null, isEditing = false) => {
         items.value.push(data.data);
       }
     }
-    saveItemsToLocalStorage(items.value);
-  });
 
+  });
 
   return await modal.present();
 };

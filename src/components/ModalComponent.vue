@@ -8,7 +8,7 @@
     </ion-toolbar>
   </ion-header>
 
-  <ion-content>
+  <ion-content style="max-width: 300px;">
     <form @submit.prevent="saveItem">
       <ion-item>
         <ion-label position="stacked">Datum prihoda</ion-label>
@@ -60,17 +60,20 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { modalController } from '@ionic/vue';
-import { collection, addDoc, deleteDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, getDoc, getDocs, where, query } from 'firebase/firestore';
 import { db } from '../firebaseConfig'; // Ensure you have your Firebase configuration set up
-import { IonButtons, IonHeader, IonTitle, IonToolbar } from '@ionic/vue';
+import { IonButtons, IonHeader, IonTitle, IonToolbar, IonInput } from '@ionic/vue';
 import { getAuth } from 'firebase/auth';
 
+const isLoading = ref(false);
 
 const props = defineProps({
   item: Object,
   isEditing: Boolean,
+
+
 });
-console.log(props.item.startTime);
+
 
 const startDate = ref(props.item?.startTime ? new Date(props.item.startTime).toISOString().split('T')[0] : '');
 const startTime = ref(props.item?.startTime ? new Date(props.item.startTime).toLocaleTimeString("en-US", { hour: '2-digit', minute: '2-digit', hour12: false }) : '');
@@ -95,12 +98,114 @@ watch(() => props.item, (newItem) => {
 const dismissModal = () => {
   modalController.dismiss();
 };
+const auth = getAuth();
+const user = auth.currentUser;
+const loadingMessage = ref('Deleting data...');
+const items = ref([]);
+const allDescriptions = ref([]);
+
+const loadItemsFromFirebase = async () => {
+  isLoading.value = true;
+  loadingMessage.value = 'Nalagam vpise...';
+
+  try {
+    if (!user) {
+      console.error('No user is logged in.');
+      return;
+    }
+
+    // Check if items are already in localStorage
+    const cachedItems = localStorage.getItem('items');
+    if (cachedItems) {
+      items.value = JSON.parse(cachedItems);
+      isLoading.value = false;
+      return;
+    }
+
+    // Fetch items from Firebase
+    const querySnapshot = await getDocs(collection(db, 'punches'));
+    items.value = querySnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => item.startTime && item.userId === user.uid) // Filter out items where startTime is null or empty and items not belonging to the logged-in user
+      .sort((a, b) => new Date(b.startTime) - new Date(a.startTime)); // Sort items by startTime
+
+    // Store items in localStorage
+    localStorage.setItem('items', JSON.stringify(items.value));
+
+  } catch (error) {
+    console.error('Error fetching items from Firebase:', error);
+  }
+
+  isLoading.value = false;
+};
+
+const loadDescriptions = async () => {
+  allDescriptions.value = [];
+  try {
+
+    // Check if descriptions are already in localStorage
+    const cachedDescriptions = localStorage.getItem('allDescriptions');
+    if (cachedDescriptions) {
+      console.log('Loaded descriptions from localStorage:', cachedDescriptions); // Debugging log
+      allDescriptions.value = JSON.parse(cachedDescriptions);
+      return;
+    }
+
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      console.error('No user is logged in.');
+      allDescriptions.value = [];
+      return;
+    }
+
+    // Fetch descriptions from Firebase for the logged-in user
+    const q = query(collection(db, 'descriptions'), where('userId', '==', user.uid));
+    const querySnapshot = await getDocs(q);
+    const descriptions = [];
+    querySnapshot.forEach((doc) => {
+      descriptions.push(doc.data().description);
+    });
+
+    const filteredDescriptions = descriptions.filter(desc => desc !== null && desc !== undefined);
+    allDescriptions.value = filteredDescriptions.sort((a, b) => a.localeCompare(b));
+
+    // Store descriptions in localStorage
+    localStorage.setItem('allDescriptions', JSON.stringify(allDescriptions.value));
+    console.log('Fetched and stored descriptions:', allDescriptions.value); // Debugging log
+  } catch (error) {
+    console.error('Error loading descriptions from Firebase:', error);
+    allDescriptions.value = [];
+  }
+};
+
+const saveDescription = async (newDescription) => {
+  try {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      console.error('No user is logged in.');
+      return;
+    }
+
+    await addDoc(collection(db, 'descriptions'), { description: newDescription, userId: user.uid });
+
+    // Clear the localStorage cache
+    localStorage.removeItem('allDescriptions');
+
+    // Fetch the latest descriptions from Firebase
+    loadDescriptions();
+  } catch (error) {
+    console.error('Error saving description to Firebase:', error);
+  }
+};
 
 const saveItem = async () => {
 
   try {
     const auth = getAuth();
     const user = auth.currentUser;
+
     if (!user) {
       alert('No user is logged in.');
       return;
@@ -124,6 +229,7 @@ const saveItem = async () => {
 
         // Add new item to Firebase
         await addDoc(collection(db, 'punches'), newItem);
+        await saveDescription(newItem.description);
         console.log('New item added to Firebase:', newItem);
       } else {
         console.error('Item not found for deletion:', props.item.id);
@@ -131,6 +237,9 @@ const saveItem = async () => {
     } else {
       // Add new item to Firebase
       await addDoc(collection(db, 'punches'), newItem);
+      await saveDescription(newItem.description);
+      localStorage.removeItem('items')
+      await loadItemsFromFirebase();
       console.log('New item added to Firebase:', newItem);
     }
 
@@ -139,6 +248,8 @@ const saveItem = async () => {
     console.error('Error saving item to Firebase:', error);
     alert('Vnesi pravilno uro in datum.');
   }
+
+
 
 
 };

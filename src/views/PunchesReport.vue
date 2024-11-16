@@ -244,9 +244,12 @@ const getTotal = () => {
     const overtimeInHours = hours + minutes / 60;
     return total + overtimeInHours;
   }, 0);
-  const roundedHours = Math.floor(totalOvertime) - 1;
+
+  const subtractValue = parseInt(localStorage.getItem('subtractValue')) || 1; // Default to 1 if not set
+  const roundedHours = Math.floor(totalOvertime) - subtractValue;
   return roundedHours > 0 ? roundedHours : 0;
 };
+
 
 
 const printDiv = (divId) => {

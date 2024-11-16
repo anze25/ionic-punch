@@ -148,7 +148,7 @@ const processData = async (data) => {
       progress.value = (i + 1) / processedItems.length; // Update progress
     }
     localStorage.removeItem('items'); // Remove items for loading all from Firebase
-    await loadItemsFromFirebase();
+    await loadItemsFromFirebase(user, items, isLoading, loadingMessage);
     console.log('Items saved or updated in Firebase');
   } catch (error) {
     console.error('Error saving or updating data in Firebase:', error);
@@ -336,7 +336,7 @@ const processSecondData = async (data) => {
         progress.value = (i + 1) / newItems.length; // Update progress
       }
       localStorage.removeItem('items'); // Remove items for loading all from Firebase
-      await loadItemsFromFirebase();
+      await loadItemsFromFirebase(user, items, isLoading, loadingMessage);
       console.log('Data updated in Firebase');
     } catch (error) {
       console.error('Error updating data in Firebase:', error);

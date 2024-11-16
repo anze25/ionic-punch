@@ -86,6 +86,7 @@
                   :value="desc"
                 >
                   {{ desc }}
+
                 </ion-select-option>
 
               </ion-select>
@@ -118,13 +119,14 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonBadge, IonGrid, IonSelect, IonSelectOption, IonSpinner } from '@ionic/vue';
+import { IonButtons, IonHeader, IonMenuButton, IonPage, IonTitle, IonToolbar, IonBadge, IonGrid, IonSelect, IonSelectOption, IonSpinner, IonIcon } from '@ionic/vue';
 import PunchInModal from '../components/PunchInModal.vue';
 import PunchOutModal from '../components/PunchOutModal.vue';
 import { modalController } from '@ionic/vue';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, where, } from 'firebase/firestore';
 import { db } from '../firebaseConfig';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+
 
 
 const auth = getAuth();
@@ -412,7 +414,6 @@ const saveDescription = async (newDescription) => {
     console.error('Error saving description to Firebase:', error);
   }
 };
-
 
 
 const handleDescriptionChange = async (e) => {
